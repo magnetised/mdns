@@ -56,22 +56,25 @@ defmodule Mdns.Client do
   end
 
   def init(:ok) do
-    ips = Enum.map(elem(:inet.getif(), 1), fn(i) ->
-      elem(i, 0)
-    end)
-  udp_options = [
-    :binary,
-    active:          true,
-    add_membership:  {@mdns_group, {0,0,0,0}},
-    multicast_if:    {0,0,0,0},
-    multicast_loop:  true,
-    multicast_ttl:   255,
-    reuseaddr:       true
-  ]
+    udp_options = [
+      :binary,
+      active:          true,
+      add_membership:  {@mdns_group, {0,0,0,0}},
+      multicast_if:    {0,0,0,0},
+      multicast_loop:  true,
+      multicast_ttl:   255,
+      reuseaddr:       true
+    ]
 
-  {:ok, events} = GenEvent.start_link([{:name, Mdns.Client.Events}])
-  {:ok, udp} = :gen_udp.open(@port, udp_options)
-  {:ok, %State{udp:  udp, events:  events, ips:  ips}}
+    {:ok, events} = GenEvent.start_link([{:name, Mdns.Client.Events}])
+    {:ok, udp} = :gen_udp.open(@port, udp_options)
+    {:ok, %State{udp:  udp, events:  events, ips:  ips()}}
+  end
+
+  defp ips do
+    :inet.getif()
+    |> elem(1)
+    |> Enum.map(&elem(&1, 0))
   end
 
   def handle_call({:handler, handler}, {pid, _} = _from, state) do
@@ -87,15 +90,15 @@ defmodule Mdns.Client do
     packet = %DNS.Record{@query_packet | qdlist:  [
       %DNS.Query{domain: to_char_list(namespace), type: :ptr, class: :in}
     ]}
-  :gen_udp.send(state.udp, @mdns_group, @port, DNS.Record.encode(packet))
-  {:reply, :ok,  %State{state | queries:  Enum.uniq([namespace | state.queries])}}
+    :gen_udp.send(state.udp, @mdns_group, @port, DNS.Record.encode(packet))
+    {:reply, :ok,  %State{state | queries:  Enum.uniq([namespace | state.queries])}}
   end
 
   def handle_info({:gen_event_EXIT, _handler, _reason}, state) do
     Enum.each(state.handlers, fn(h) ->
       GenEvent.add_mon_handler(state.events, elem(h, 0), elem(h, 1))
     end)
-  {:noreply, state}
+    {:noreply, state}
   end
 
   def handle_info({:udp, _socket, ip, _port, packet}, state) do
@@ -117,17 +120,17 @@ defmodule Mdns.Client do
   def handle_record(ip, record, state) do
     device = get_device(ip, record, state)
     devices =
-    Enum.reduce(state.queries, %{other:  []}, fn(query, acc) ->
-      case device_query_match(device, query) do
-        nil ->
-          Map.merge(acc, state.devices)
-        service ->
-          {namespace, devices} = create_namespace_devices(query, device, acc, state)
-          notify_service_availability(state, namespace, device, service)
-          devices
-      end
-    end)
-  %State{state | devices:  devices}
+      Enum.reduce(state.queries, %{other:  []}, fn(query, acc) ->
+        case device_query_match(device, query) do
+          nil ->
+            Map.merge(acc, state.devices)
+          service ->
+            {namespace, devices} = create_namespace_devices(query, device, acc, state)
+            notify_service_availability(state, namespace, device, service)
+            devices
+        end
+      end)
+    %State{state | devices:  devices}
   end
 
   def notify_service_availability(state, namespace, device, %Service{ttl: 0}) do
