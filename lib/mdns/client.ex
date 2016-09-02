@@ -35,6 +35,10 @@ defmodule Mdns.Client do
             payload: %{}
     end
 
+    defmodule Service do
+      defstruct name: nil, ttl: 0
+    end
+
     def start_link do
         GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
     end
@@ -114,20 +118,40 @@ defmodule Mdns.Client do
         device = get_device(ip, record, state)
         devices =
             Enum.reduce(state.queries, %{:other => []}, fn(query, acc) ->
-                cond do
-                    Enum.any?(device.services, fn(service) -> String.ends_with?(service, query) end) ->
-                        {namespace, devices} = create_namespace_devices(query, device, acc, state)
-                        GenEvent.notify(state.events, {namespace, device})
-                        Logger.debug("Device: #{inspect {namespace, device}}")
-                        devices
-                    true -> Map.merge(acc, state.devices)
-                end
+              case device_query_match(device, query) do
+                nil ->
+                  Map.merge(acc, state.devices)
+                service ->
+                  {namespace, devices} = create_namespace_devices(query, device, acc, state)
+                  notify_service_availability(state, namespace, device, service)
+                  devices
+              end
             end)
         %State{state | :devices => devices}
     end
 
+    def notify_service_availability(state, namespace, device, %Service{ttl: 0}) do
+      notify_service(state, namespace, :offline, device)
+    end
+    def notify_service_availability(state, namespace, device, _service) do
+      notify_service(state, namespace, :online, device)
+    end
+
+    def notify_service(state, namespace, status, device) do
+      Logger.debug("Device: #{inspect {namespace, status, device}}")
+      GenEvent.notify(state.events, {namespace, status, device})
+    end
+
+    def device_query_match(device, query) do
+      Enum.find(device.services, &service_matches_query?(&1, query))
+    end
+
+    def service_matches_query?(service, query) do
+      String.ends_with?(service.name, query)
+    end
+
     def handle_device(%{:type => :ptr} = record, device) do
-        %Device{device | :services => Enum.uniq([to_string(record.data) | device.services])}
+        %Device{device | :services => Enum.uniq_by([%Service{name: to_string(record.data), ttl: record.ttl} | device.services], fn(s) -> s.name end)}
     end
 
     def handle_device(%{:type => :a} = record, device) do
