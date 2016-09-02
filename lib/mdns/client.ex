@@ -150,15 +150,15 @@ defmodule Mdns.Client do
     String.ends_with?(service.name, query)
   end
 
-  def handle_device(%{type:  :ptr} = record, device) do
+  def handle_device(%{type: :ptr} = record, device) do
     %Device{device | services:  Enum.uniq_by([%Service{name: to_string(record.data), ttl: record.ttl} | device.services], fn(s) -> s.name end)}
   end
 
-  def handle_device(%{type:  :a} = record, device) do
+  def handle_device(%{type: :a} = record, device) do
     %Device{device | domain:  to_string(record.domain)}
   end
 
-  def handle_device(%{type:  :txt} = record, device) do
+  def handle_device(%{type: :txt} = record, device) do
     %Device{device | payload:  Enum.reduce(record.data, %{}, fn(kv, acc) ->
       case String.split(to_string(kv), "=", parts: 2) do
         [k, v] -> Map.put(acc, String.downcase(k), String.strip(v))
