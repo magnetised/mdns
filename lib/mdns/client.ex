@@ -74,7 +74,7 @@ defmodule Mdns.Client do
         {:ok, %State{:udp => udp, :events => events, :ips => ips}}
     end
 
-    def handle_call({:handler, handler}, {pid, _} = from, state) do
+    def handle_call({:handler, handler}, {pid, _} = _from, state) do
         GenEvent.add_mon_handler(state.events, handler, pid)
         {:reply, :ok, %{state | :handlers => [{handler, pid} | state.handlers]}}
     end
@@ -91,14 +91,14 @@ defmodule Mdns.Client do
         {:reply, :ok,  %State{state | :queries => Enum.uniq([namespace | state.queries])}}
     end
 
-    def handle_info({:gen_event_EXIT, handler, reason}, state) do
+    def handle_info({:gen_event_EXIT, _handler, _reason}, state) do
         Enum.each(state.handlers, fn(h) ->
             GenEvent.add_mon_handler(state.events, elem(h, 0), elem(h, 1))
         end)
         {:noreply, state}
     end
 
-    def handle_info({:udp, socket, ip, port, packet}, state) do
+    def handle_info({:udp, _socket, ip, _port, packet}, state) do
         {:noreply, cond do
             Enum.any?(state.ips, fn(i) -> i == ip end) -> state
             true -> handle_packet(ip, packet, state)
@@ -167,7 +167,7 @@ defmodule Mdns.Client do
         end)}
     end
 
-    def handle_device(%{:type => type} = record, device) do
+    def handle_device(_record, device) do
         device
     end
 
