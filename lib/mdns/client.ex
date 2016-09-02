@@ -150,27 +150,6 @@ defmodule Mdns.Client do
     String.ends_with?(service.name, query)
   end
 
-  def handle_device(%{type: :ptr} = record, device) do
-    %Device{device | services:  Enum.uniq_by([%Service{name: to_string(record.data), ttl: record.ttl} | device.services], fn(s) -> s.name end)}
-  end
-
-  def handle_device(%{type: :a} = record, device) do
-    %Device{device | domain:  to_string(record.domain)}
-  end
-
-  def handle_device(%{type: :txt} = record, device) do
-    %Device{device | payload:  Enum.reduce(record.data, %{}, fn(kv, acc) ->
-      case String.split(to_string(kv), "=", parts: 2) do
-        [k, v] -> Map.put(acc, String.downcase(k), String.strip(v))
-        _ -> nil
-      end
-    end)}
-  end
-
-  def handle_device(_record, device) do
-    device
-  end
-
   def get_device(ip, record, state) do
     orig_device =
       state.devices
@@ -182,6 +161,24 @@ defmodule Mdns.Client do
       |> Enum.map(&rr/1)
       |> Enum.concat
       |> Enum.reduce(orig_device, &handle_device(&1, &2))
+  end
+
+  def handle_device(%{type: :ptr} = record, device) do
+    %Device{device | services:  Enum.uniq_by([%Service{name: to_string(record.data), ttl: record.ttl} | device.services], fn(s) -> s.name end)}
+  end
+  def handle_device(%{type: :a} = record, device) do
+    %Device{device | domain:  to_string(record.domain)}
+  end
+  def handle_device(%{type: :txt} = record, device) do
+    %Device{device | payload:  Enum.reduce(record.data, %{}, fn(kv, acc) ->
+      case String.split(to_string(kv), "=", parts: 2) do
+        [k, v] -> Map.put(acc, String.downcase(k), String.strip(v))
+        _ -> nil
+      end
+    end)}
+  end
+  def handle_device(_record, device) do
+    device
   end
 
   def create_namespace_devices(query, device, devices, state) do
